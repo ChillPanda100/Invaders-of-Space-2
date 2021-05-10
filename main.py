@@ -1,0 +1,336 @@
+import pygame
+import os
+import random
+pygame.font.init()
+
+WIDTH, HEIGHT = 900, 700
+WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Invaders of Space 2")
+
+# ICON
+icon = pygame.image.load(os.path.join("assets", "icon.png"))
+pygame.display.set_icon(icon)
+
+# ESSENTIALS
+lives = 5
+score = 0
+keys = pygame.key.get_pressed()
+lost = False
+
+# SPECIAL CHARACTER
+specialCharacter = pygame.image.load(os.path.join("assets", "special_character.png"))
+
+# BACKGROUND
+BG = pygame.image.load(os.path.join("assets", "background.png"))
+
+# BULLETS
+player_bullet = pygame.image.load(os.path.join("assets", "player_bullet.png"))
+enemy_bullet = pygame.image.load(os.path.join("assets", "enemy_laser.png"))
+
+# ENEMIES
+enemy_one = pygame.image.load(os.path.join("assets", "enemy_one.png"))
+enemy_two = pygame.image.load(os.path.join("assets", "enemy_two.png"))
+enemy_three = pygame.image.load(os.path.join("assets", "enemy_three.png"))
+enemySpecialImg = pygame.image.load(os.path.join("assets", "special_character.png"))
+
+# PLAYER
+main_character = pygame.image.load(os.path.join("assets", "main_character.png"))
+
+
+# BULLET CLASS
+class Bullet:
+    def __init__(self, x, y, img):
+        self.x = x
+        self.y = y
+        self.img = img
+        self.mask = pygame.mask.from_surface(self.img)
+
+    def draw(self, window):
+        window.blit(self.img, (self.x, self.y))
+
+    def move(self, playerY_change):
+        self.y -= playerY_change
+
+    def off_screen(self, height):
+        return not self.y <= height and self.y >= 0
+
+    def collision(self, obj):
+        return collide(obj, self)
+
+
+# SHIP CLASS
+class Ship:
+    COOLDOWN = 30
+
+    def __init__(self, x, y, health=100):
+        self.x = x
+        self.y = y
+        self.health = health
+        self.ship_img = None
+        self.bullet_img = None
+        self.bullets = []
+        self.cooldown_counter = 0
+
+    def cooldown(self):
+        if self.cooldown_counter >= self.COOLDOWN:
+            self.cooldown_counter = 0
+        elif self.cooldown_counter > 0:
+            self.cooldown_counter += 0.5
+
+    def draw(self, window):
+        window.blit(self.ship_img, (self.x, self.y))
+        for bullet in self.bullets:
+            bullet.draw(window)
+
+    def shoot(self):
+        if self.cooldown_counter == 0:
+            bullet = Bullet(self.x, self.y, self.bullet_img)
+            self.bullets.append(bullet)
+            self.cooldown_counter = 1
+
+    def move_bullets(self, laserY_change, obj):
+        self.cooldown()
+        for bullet in self.bullets:
+            bullet.move(-laserY_change)
+            if bullet.off_screen(HEIGHT):
+                self.bullets.remove(bullet)
+            elif bullet.collision(obj):
+                self.bullets.remove(bullet)
+
+
+# ENEMY CLASS
+class Enemy(Ship):
+    Color_map = {"gray": (enemy_one, enemy_bullet), "navy": (enemy_two, enemy_bullet), "blue": (enemy_three, enemy_bullet)}
+
+    def __init__(self, x, y, color):
+        super().__init__(x, y)
+        self.ship_img, self.bullet_img = self.Color_map[color]
+        self.mask = pygame.mask.from_surface(self.ship_img)
+
+    def move(self, enemyY_change):
+        self.y += enemyY_change
+
+    def move_bullets(self, enemy_laser_change, obj):
+        self.cooldown()
+        for bullet in self.bullets:
+            bullet.move(-enemy_laser_change)
+            if bullet.off_screen(HEIGHT):
+                self.bullets.remove(bullet)
+            elif bullet.collision(obj):
+                obj.health -= 10
+                self.bullets.remove(bullet)
+
+
+# SPECIAL CHARACTER CLASS
+class Special(Ship):
+    def __init__(self, x, y):
+        super().__init__(x, y)
+        self.bullet_img = enemy_bullet
+        self.ship_img = enemySpecialImg
+        self.mask = pygame.mask.from_surface(self.ship_img)
+
+    def move(self, enemySpecialX_change, enemySpecialY_change):
+        self.x += enemySpecialX_change
+
+    def move_bullets(self, enemy_laser_change, obj):
+        self.cooldown()
+        for bullet in self.bullets:
+            bullet.move(-enemy_laser_change)
+            if bullet.off_screen(HEIGHT):
+                self.bullets.remove(bullet)
+            elif bullet.collision(obj):
+                self.bullets.remove(bullet)
+
+    def collision(self, obj):
+        return collide(obj, self)
+
+
+class Player(Ship):
+    def __init__(self, x, y, max_health=100):
+        super().__init__(x, y)
+        self.ship_img = main_character
+        self.bullet_img = player_bullet
+        self.max_health = max_health
+        self.mask = pygame.mask.from_surface(self.ship_img)
+
+    def move_bullets(self, laserY_change, objs):
+        self.cooldown()
+        for bullet in self.bullets:
+            bullet.move(laserY_change)
+            if bullet.off_screen(HEIGHT):
+                self.bullets.remove(bullet)
+            else:
+                for obj in objs:
+                    if bullet.collision(obj):
+                        objs.remove(obj)
+                        if bullet in self.bullets:
+                            self.bullets.remove(bullet)
+
+    def special_bullets(self, laserY_change, obj):
+        self.cooldown()
+        for bullet in self.bullets:
+            bullet.move(laserY_change)
+            if bullet.off_screen(HEIGHT):
+                self.bullets.remove(bullet)
+            elif bullet.collision(obj):
+                obj.y = random.randint(-192, -128)
+                self.bullets.remove(bullet)
+
+    def draw(self, window):
+        super().draw(window)
+        self.healthbar(window)
+
+    def healthbar(self, window):
+        global lives
+        global keys
+        global lost
+        pygame.draw.rect(window, (0, 31, 255), (self.x, self.y + self.ship_img.get_height() + 10, self.ship_img.get_width(), 10))
+        pygame.draw.rect(window, (0, 216, 255), (self.x, self.y + self.ship_img.get_height() + 10, self.ship_img.get_width() * (self.health/self.max_health), 10))
+        if self.ship_img.get_width() * (self.health/self.max_health) == 0:
+            lives -= lives
+
+
+def collide(obj1, obj2):
+    offset_x = obj2.x - obj1.x
+    offset_y = obj2.y - obj1.y
+    return obj1.mask.overlap(obj2.mask, (int(offset_x), int(offset_y)))
+
+
+def main():
+    FPS = 60
+    clock = pygame.time.Clock()
+    playerX_change = 7
+    playerY_change = 7
+    global lives
+    global lost
+
+    laserY_change = 5
+    enemyBulletChange = 9
+
+    enemies = []
+    wave_length = 5
+    enemyY_change = 1.5
+
+    enemySpecialX_change = 4
+    enemySpecialY_change = 64
+
+    level = 0
+    player = Player(412, 636)
+    special = Special(0, -64)
+    main_font = pygame.font.SysFont("comicsans", 50)
+    gameover_font = pygame.font.SysFont("comicsans", 70)
+    play_again_font = pygame.font.SysFont("comicsans", 60)
+    running = True
+
+    def redraw_window():
+        WIN.blit(BG, (0, 0))
+        for enemy in enemies:
+            enemy.draw(WIN)
+        if lost:
+            play_again_text = play_again_font.render("Press P to play again", True, (255, 255, 255))
+            WIN.blit(play_again_text, (WIDTH / 2 - play_again_text.get_width() / 2, 399))
+            lost_text = gameover_font.render("GAME OVER", True, (255, 255, 255))
+            WIN.blit(lost_text, (WIDTH / 2 - lost_text.get_width() / 2, 340))
+        lives_label = main_font.render(f"Lives: {lives}", True, (255, 255, 255))
+        level_label = main_font.render(f"Level: {level}", True, (255, 255, 255))
+        WIN.blit(lives_label, (10, 10))
+        WIN.blit(level_label, (WIDTH - level_label.get_width() - 10, 10))
+        player.draw(WIN)
+        special.draw(WIN)
+        pygame.display.update()
+
+    while running:
+        clock.tick(FPS)
+        if len(enemies) == 0:
+            level += 1
+            wave_length += 5
+            for i in range(wave_length):
+                enemy = Enemy(random.randrange(50, WIDTH - 100), random.randrange(-1600, -200), random.choice(["gray", "navy", "blue"]))
+                enemies.append(enemy)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit()
+
+        special.move(enemySpecialX_change, enemySpecialY_change)
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_SPACE]:
+            player.shoot()
+        if keys[pygame.K_w] and not keys[pygame.K_UP]:
+            player.y -= playerY_change
+        if keys[pygame.K_a] and not keys[pygame.K_LEFT]:
+            player.x -= playerX_change
+        if keys[pygame.K_s] and not keys[pygame.K_DOWN]:
+            player.y += playerY_change
+        if keys[pygame.K_d] and not keys[pygame.K_RIGHT]:
+            player.x += playerX_change
+        if keys[pygame.K_UP] and not keys[pygame.K_w]:
+            player.y -= playerY_change
+        if keys[pygame.K_LEFT] and not keys[pygame.K_a]:
+            player.x -= playerX_change
+        if keys[pygame.K_DOWN] and not keys[pygame.K_s]:
+            player.y += playerY_change
+        if keys[pygame.K_RIGHT] and not keys[pygame.K_d]:
+            player.x += playerX_change
+        if keys[pygame.K_SPACE]:
+            player.shoot()
+
+        for enemy in enemies[:]:
+            enemy.move(enemyY_change)
+            enemy.move_bullets(enemyBulletChange, player)
+            if enemy.y >= 740:
+                lives -= 1
+                enemies.remove(enemy)
+            if lives <= 0:
+                lives = 0
+                lost = True
+            if collide(enemy, player):
+                lives -= 1
+                enemy.y = random.randrange(-1400, 100)
+            if random.randrange(0, 420) == 1:
+                enemy.shoot()
+            if lost:
+                enemy.y = -2000
+                laserY_change = 0
+                enemyY_change = 0
+                enemyBulletChange = 0
+                enemySpecialY_change = 0
+                enemySpecialX_change = 0
+                special.y = -1000
+                player.y = -84
+                if keys[pygame.K_p]:
+                    lost = False
+                    lives += 5
+                    main()
+
+        player.move_bullets(laserY_change, enemies)
+
+        special.move_bullets(enemyBulletChange, player)
+        player.special_bullets(laserY_change, special)
+
+        if special.x <= 0:
+            enemySpecialX_change = 4
+            special.y += enemySpecialY_change
+        if special.x >= 836:
+            enemySpecialX_change = -4
+            special.y += enemySpecialY_change
+        if collide(special, player):
+            lives -= 1
+            special.y = random.randrange(-192, -128)
+        if random.randrange(0, 420) == 1:
+            special.shoot()
+
+        if player.x <= 0:
+            player.x = 0
+        if player.x >= 836:
+            player.x = 836
+        if player.y >= 636:
+            player.y = 636
+        if player.y <= -84:
+            player.y = -84
+
+        redraw_window()
+
+
+main()
