@@ -1,7 +1,9 @@
 import pygame
 import os
 import random
+from pygame import mixer
 pygame.font.init()
+pygame.mixer.init()
 
 WIDTH, HEIGHT = 900, 700
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -12,10 +14,16 @@ icon = pygame.image.load(os.path.join("assets", "icon.png"))
 pygame.display.set_icon(icon)
 
 # ESSENTIALS
-lives = 5
+lives = 8
 score = 0
 keys = pygame.key.get_pressed()
+won = False
 lost = False
+
+# MUSIC AND SOUND EFFECTS
+mixer.music.load(os.path.join("assets", "gamemusic.mp3"))
+mixer.music.play(-1)
+hit_sound = mixer.Sound(os.path.join("assets", "laserSound.mp3"))
 
 # SPECIAL CHARACTER
 specialCharacter = pygame.image.load(os.path.join("assets", "special_character.png"))
@@ -117,6 +125,7 @@ class Enemy(Ship):
             if bullet.off_screen(HEIGHT):
                 self.bullets.remove(bullet)
             elif bullet.collision(obj):
+                hit_sound.play()
                 obj.health -= 10
                 self.bullets.remove(bullet)
 
@@ -139,6 +148,7 @@ class Special(Ship):
             if bullet.off_screen(HEIGHT):
                 self.bullets.remove(bullet)
             elif bullet.collision(obj):
+                hit_sound.play()
                 self.bullets.remove(bullet)
 
     def collision(self, obj):
@@ -162,6 +172,7 @@ class Player(Ship):
             else:
                 for obj in objs:
                     if bullet.collision(obj):
+                        hit_sound.play()
                         objs.remove(obj)
                         if bullet in self.bullets:
                             self.bullets.remove(bullet)
@@ -173,6 +184,7 @@ class Player(Ship):
             if bullet.off_screen(HEIGHT):
                 self.bullets.remove(bullet)
             elif bullet.collision(obj):
+                hit_sound.play()
                 obj.y = random.randint(-192, -128)
                 self.bullets.remove(bullet)
 
@@ -184,10 +196,13 @@ class Player(Ship):
         global lives
         global keys
         global lost
+        global won
         pygame.draw.rect(window, (0, 31, 255), (self.x, self.y + self.ship_img.get_height() + 10, self.ship_img.get_width(), 10))
         pygame.draw.rect(window, (0, 216, 255), (self.x, self.y + self.ship_img.get_height() + 10, self.ship_img.get_width() * (self.health/self.max_health), 10))
         if self.ship_img.get_width() * (self.health/self.max_health) == 0:
             lives -= lives
+        if won:
+            pygame.draw.rect(window, (0, 216, 255), (self.x, self.y + self.ship_img.get_height() + 10, self.ship_img.get_width() * (self.health / self.max_health), 10))
 
 
 def collide(obj1, obj2):
@@ -199,10 +214,11 @@ def collide(obj1, obj2):
 def main():
     FPS = 60
     clock = pygame.time.Clock()
-    playerX_change = 7
-    playerY_change = 7
+    playerX_change = 7.8
+    playerY_change = 7.8
     global lives
     global lost
+    global won
 
     laserY_change = 5
     enemyBulletChange = 9
@@ -217,9 +233,12 @@ def main():
     level = 0
     player = Player(412, 636)
     special = Special(0, -64)
+    attribution = pygame.font.SysFont("comicsans", 40)
     main_font = pygame.font.SysFont("comicsans", 50)
     gameover_font = pygame.font.SysFont("comicsans", 70)
     play_again_font = pygame.font.SysFont("comicsans", 60)
+    author_font = pygame.font.SysFont("comicsans", 60)
+    congrats_font = pygame.font.SysFont("comicsans", 95)
     running = True
 
     def redraw_window():
@@ -231,6 +250,17 @@ def main():
             WIN.blit(play_again_text, (WIDTH / 2 - play_again_text.get_width() / 2, 399))
             lost_text = gameover_font.render("GAME OVER", True, (255, 255, 255))
             WIN.blit(lost_text, (WIDTH / 2 - lost_text.get_width() / 2, 340))
+        if won:
+            attribution_text = attribution.render("Icons made by Freepik and icongeek26 from www.flaticon.com", True, (255, 255, 255))
+            WIN.blit(attribution_text, (WIDTH / 2 - attribution_text.get_width() / 2, 600))
+            play_again_text = play_again_font.render("Press P to play again", True, (255, 255, 255))
+            WIN.blit(play_again_text, (WIDTH / 2 - play_again_text.get_width() / 2, 399))
+            author_text = author_font.render("Game made by frytat", True, (255, 255, 255))
+            WIN.blit(author_text, (WIDTH / 2 - author_text.get_width() / 2, 30))
+            congrats_text = congrats_font.render("Congratulations!", True, (255, 255, 255))
+            WIN.blit(congrats_text, (WIDTH / 2 - congrats_text.get_width() / 2, 315))
+            music_text = author_font.render("Music: snayk - growing on me", True, (255, 255, 255))
+            WIN.blit(music_text, (WIDTH / 2 - music_text.get_width() / 2, 500))
         lives_label = main_font.render(f"Lives: {lives}", True, (255, 255, 255))
         level_label = main_font.render(f"Level: {level}", True, (255, 255, 255))
         WIN.blit(lives_label, (10, 10))
@@ -251,6 +281,9 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 quit()
+
+        if level >= 3:
+            enemyY_change = 1.7
 
         special.move(enemySpecialX_change, enemySpecialY_change)
 
@@ -286,9 +319,10 @@ def main():
                 lives = 0
                 lost = True
             if collide(enemy, player):
+                hit_sound.play()
                 lives -= 1
                 enemy.y = random.randrange(-1400, 100)
-            if random.randrange(0, 420) == 1:
+            if random.randrange(0, 480) == 1:
                 enemy.shoot()
             if lost:
                 enemy.y = -2000
@@ -301,7 +335,21 @@ def main():
                 player.y = -84
                 if keys[pygame.K_p]:
                     lost = False
-                    lives += 5
+                    lives += 8
+                    main()
+            if level >= 6:
+                won = True
+                enemy.y = -2000
+                laserY_change = 0
+                enemyY_change = 0
+                enemyBulletChange = 0
+                enemySpecialY_change = 0
+                enemySpecialX_change = 0
+                special.y = -1000
+                player.y = -84
+                if keys[pygame.K_p]:
+                    won = False
+                    lives += 8 - lives
                     main()
 
         player.move_bullets(laserY_change, enemies)
@@ -316,9 +364,13 @@ def main():
             enemySpecialX_change = -4
             special.y += enemySpecialY_change
         if collide(special, player):
+            hit_sound.play()
             lives -= 1
             special.y = random.randrange(-192, -128)
-        if random.randrange(0, 420) == 1:
+        if special.y >= 750:
+            lives -= 1
+            special.y = random.randrange(-192, -128)
+        if random.randrange(0, 480) == 1:
             special.shoot()
 
         if player.x <= 0:
@@ -332,5 +384,21 @@ def main():
 
         redraw_window()
 
+def main_menu():
+    title_font = pygame.font.SysFont("comicsans", 60)
+    instruction_font = pygame.font.SysFont("comicsans", 50)
+    run = True
+    while run:
+        WIN.blit(BG, (0, 0))
+        title_text = title_font.render("Welcome to Invaders of Space 2!", True, (255, 255, 255))
+        WIN.blit(title_text, (WIDTH / 2 - title_text.get_width() / 2, 300))
+        instruction_text = instruction_font.render("Click anywhere on the screen to start.", True, (255, 255, 255))
+        WIN.blit(instruction_text, (WIDTH / 2 - instruction_text.get_width() / 2, 500))
+        pygame.display.update()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                main()
 
-main()
+main_menu()
